@@ -1,0 +1,161 @@
+<html>
+  <head>
+    <title>Custom Pad</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"> <!-- amb aquesta comanada desactivem el zoom -->
+    <script type="text/javascript" charset="utf-8" src="cordova.js"></script>
+    <script src="https://code.jquery.com/jquery-2.1.3.min.js"></script>
+    <script src="https://cdn.socket.io/socket.io-1.3.3.js"></script>
+    <script type="text/javascript" charset="utf-8">
+		var ip;
+		var socket;
+		var can;
+		var two_pi_rad = 2 * Math.PI;
+		var connection_div_h;
+		var pad_json = '[\
+			{"x":0.5,"y":0.1,"rad":35,"color":"green","text":"","value": "LEFT"},\
+			{"x":0.5,"y":0.4,"rad":35,"color":"red","text":"","value": "RIGHT"},\
+			{"x":0.70,"y":0.25,"rad":35,"color":"blue","text":"","value": "UP"},\
+			{"x":0.30,"y":0.25,"rad":35,"color":"yellow","text":"","value": "DOWN"},\
+			{"x":0.25,"y":0.7,"rad":40,"color":"purple","text":"","value": "SPACE"},\
+			{"x":0.75,"y":0.6,"rad":30,"color":"black","text":"","value": "c"},\
+			{"x":0.75,"y":0.8,"rad":30,"color":"orange","text":"","value": "v"}\
+		]';
+		var pad = JSON.parse(pad_json);
+		var n_buttons = pad.length;
+		var last_buttons_clicked = Array.apply(null, new Array(n_buttons)).map(Number.prototype.valueOf,0);
+		var buttons_clicked = Array.apply(null, new Array(n_buttons)).map(Number.prototype.valueOf,0);
+		var touches;
+		window.onload = onDeviceReady; // Això es pq funcioni a lexplorador, es a dir, sense cordova
+		// Wait for device API libraries to load
+		document.addEventListener("deviceready", onDeviceReady, false);
+		
+		// device APIs are available
+		function onDeviceReady() {
+			// Sizing canvas ---
+			//connection_div_h = document.getElementById('form_connection').offsetHeight; //APP only
+			can = document.getElementById("canvas");
+			ctx = can.getContext("2d");
+			screen_w = window.innerWidth;
+			screen_h = window.innerHeight;
+			can.width = screen_w;
+			can.height = screen_h/* - connection_div_h*/;
+			// ------			
+			percentile2absoluteposition();
+			
+			draw();
+			can.addEventListener("touchstart",touchScreen,false);
+			can.addEventListener("touchmove",touchScreen,false);
+			can.addEventListener("touchend",touchScreen,false);
+			
+			socket = io(); 	// Aixo només serveix quan aquesta pagina es carrega des d'un servidor http fet amb node.js i express.
+							// El socket es connecta automàticament amb la direcció (adreça i port) des d'on s'ha enviat la pàgina.
+			/*
+			//APP ONLY
+			$('#form_connexio').submit(function(){
+				ip = $('#ip').val();
+				socket = io('http://' + ip + ':3000');
+				return false;
+			});*/
+		}
+		
+		function draw() {
+			ctx.clearRect(0, 0, can.width, can.height);
+			pad.forEach(function(button) {
+				draw_round_button(button.x, button.y, button.rad, button.color, button.text);
+			});
+		}
+		
+		function touchScreen(event){
+			event.preventDefault();
+			draw();
+
+			touches = event.targetTouches;
+			buttons_clicked = Array.apply(null, new Array(n_buttons)).map(Number.prototype.valueOf,0);
+			for (i = 0; i < touches.length; ++i) {
+				var x = touches[i].clientX;
+				var y = touches[i].clientY/* - connection_div_h*/;
+				draw_cross(x, y);
+				button_under_cursor(x, y);
+			}
+			press_buttons();
+			last_buttons_clicked = buttons_clicked;
+		}
+		
+		function press_buttons() {
+			for (i = 0; i<n_buttons; ++i) {
+				switch(last_buttons_clicked[i] - buttons_clicked[i]) {
+					case -1: 
+						// Button pressed
+						socket.emit('key press', pad[i].value);
+						break;
+					case 1:
+						// Button unpressed
+						socket.emit('key release', pad[i].value); 
+						break;
+				}
+			}
+		}
+		
+		function button_under_cursor (x, y) {
+			// Assumirem que les variables x i y del pad guarden les coordenades absolutes del centre de cada botó i no un valor percentual sobre
+			// l'ample i alt total de la pangtalla.
+			pad.forEach(function(button, index) {
+				if ((button.rad - dist_btwn_points(button.x, button.y, x, y)) > 0) {
+					buttons_clicked[index] = 1;
+				}
+			});
+		}
+		
+		// Return distance between points
+		function dist_btwn_points(x1, y1, x2, y2) {
+			x = x1 - x2;
+			x = x * x;
+			y = y1 - y2;
+			y = y * y;
+			return Math.sqrt(x + y); 
+		}
+		
+		function draw_round_button(x, y, rad, color, text) {	
+			// Button drawing
+			ctx.beginPath();
+			ctx.arc(x,y,rad,0,two_pi_rad,false);
+			ctx.fillStyle = color;
+			ctx.fill();
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = '#003300';
+			ctx.stroke();
+			
+			// Create text
+			var mida_lletra=20;
+			ctx.fillStyle='black';
+			ctx.font= mida_lletra + "px Droid Sans";
+			ctx.fillText(text, x, y);
+		}
+		
+		function percentile2absoluteposition() {
+			pad.forEach(function(button) {
+				button.x = can.width * button.x;
+				button.y = can.height * button.y;
+			});
+		}
+		
+		function draw_cross (x,y) {
+			ctx.beginPath();
+			ctx.moveTo(0, y);
+			ctx.lineTo(can.width, y);
+			ctx.moveTo(x, 0);
+			ctx.lineTo(x, can.height);
+			ctx.stroke();
+		
+		}
+	</script>
+  </head>
+  <body>
+	<!--APP only<form id="form_connection">
+      <input id="ip" autocomplete="off" /><button>Connecta</button>
+    </form>-->
+	<div id="pad">
+		<canvas id="canvas"></canvas>
+    </div>
+  </body>
+</html>
